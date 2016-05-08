@@ -1,0 +1,39 @@
+<html ng-app="dpApp" ng-controller="loginCtrl">
+  <head>
+    <meta charset="utf8">
+    <title>Dripbox</title>
+    <link rel="stylesheet" href="public/bootstrap/dist/css/bootstrap.css">
+  </head>
+  <body>
+    <div class="container" ng-if="!$root.isLogin">
+      <div class="col-xs-10 col-xs-offset-1">
+        <div>
+          <h2>登入 Dripbox</h2>
+        </div>
+        <div class="form-group">
+          <input class="form-control" ng-model="login.email" type="email" placeholder="email">
+        </div>
+        <div class="form-group">
+          <input class="form-control" ng-model="login.password" type="password" placeholder="password">
+        </div>
+        <div class="form-group">
+          <button ng-click="pressLoginButton()" class="form-control btn btn-primary">送出</button>
+        </div>
+        <div ng-bind="message"></div>
+      </div> 
+    </div>
+  
+    <div class="container">
+      <div ng-if="$root.isLogin">
+        <h2 ng-bind="'hello, '+$root.user.email"></h2>
+      </div>
+    </div>
+    
+
+
+    <script src="public/angular/angular.js"></script> 
+    <script src="public/jquery/dist/jquery.min.js"></script> 
+    <script src="public/bootstrap/dist/js/bootstrap.min.js"></script> 
+    <script src="public/js/login.js"></script>
+  </body>
+</html>

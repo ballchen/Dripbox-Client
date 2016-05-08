@@ -1,0 +1,23 @@
+// Match
+matchMatched: null,
+matchMissed: null,
+matchUndrawn: null,
+
+// Mail
+mail: null,
+
+// Success
+schoolSuccess: null,
+photoSuccess: null,
+introSuccess: null,
+emailSuccess: null,
+
+// Failure
+schoolFail: null,
+photoFail: null,
+introFail: null,
+emailFail: null
+
+
+example 
+matchMatched: '{{ name }}已成為你的基友。跟你的新基友{{ name }}聊聊天吧！’;asdasdasdasdaasdasdasdasdasdasdasasdasdassadasasd

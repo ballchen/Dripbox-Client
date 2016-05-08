@@ -1,0 +1,24 @@
+{
+  "name": "dripbox",
+  "description": "",
+  "main": "index.html",
+  "authors": [
+    "ballchen <kerkerball@gmail.com>"
+  ],
+  "license": "ISC",
+  "homepage": "https://github.com/ballchen/Dripbox-Client",
+  "moduleType": [],
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "public/",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "angular": "~1.5.5",
+    "bootstrap": "^3.3.6",
+    "jquery": "^2.2.3"
+  }
+}

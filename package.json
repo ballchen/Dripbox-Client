@@ -2,7 +2,7 @@
   "name": "dripbox",
   "version": "0.0.1",
   "description": "",
-  "main": "index.js",
+  "main": "index.html",
   "scripts": {
     "lint": "eslint . --ext .js",
     "dev": "NODE_ENV=development node index",
