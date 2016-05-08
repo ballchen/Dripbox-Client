@@ -23,9 +23,18 @@
       </div> 
     </div>
   
-    <div class="container">
-      <div ng-if="$root.isLogin">
+    <div class="container" ng-if="$root.isLogin">
+      <div>
         <h2 ng-bind="'hello, '+$root.user.email"></h2>
+      </div>
+      <div>
+        {{macAddress}}
+        <button class="btn btn-default" ng-click="pressLogoutButton()">登出</button>
+        
+      </div>
+
+      <div class="file-list">
+        
       </div>
     </div>
     
@@ -33,7 +42,8 @@
 
     <script src="public/components/angular/angular.js"></script> 
     <script src="public/components/jquery/dist/jquery.min.js"></script> 
-    <script src="public/components/bootstrap/dist/js/bootstrap.min.js"></script> 
+    <script src="public/components/bootstrap/dist/js/bootstrap.min.js"></script>
+    <script src="public/components/angular-cookies/angular-cookies.js"></script>
     <script src="public/js/login.js"></script>
   </body>
 </html>

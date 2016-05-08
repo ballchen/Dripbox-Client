@@ -4,3 +4,5 @@ config/*
 dump.rdb
 *.log
 *.pem
+Dripbox
+public/components/*
