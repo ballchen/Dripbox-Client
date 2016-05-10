@@ -7,19 +7,64 @@ var gui = require('nw.gui')
 var mkdirp = require('mkdirp')
 var config = require('./config')
 const exec = require('child_process').exec
-const request = require('request')
 
 // var mkBoxDir = require('../lib/basic').mkdir
 var hosts = {
   metadata: 'http://localhost:3001/',
-  download: 'http://localhost:3002/'
+  data: 'http://localhost:3002/'
 }
 
-var app = angular.module('dpApp', [])
-app.controller('loginCtrl', ['$scope', '$http', '$rootScope', function ($scope, $http, $rootScope) {
+var app = angular.module('dpApp', ['ngFileUpload'])
+app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function ($scope, $http, $rootScope, Upload) {
   $scope.login = {}
   $scope.message = ''
   $scope.macAddress = null
+  $scope.dataUploading = false
+
+  var getFiles = function () {
+    $http({
+      method: 'GET',
+      url: hosts.metadata + 'api/file'
+    }).success(function (data) {
+      $scope.files = data
+    }).error(function (data) {})
+  }
+
+  // data engine -- start
+  const EventEmitter = require('events')
+  const util = require('util')
+
+  function MyEmitter () {
+    EventEmitter.call(this)
+  }
+  util.inherits(MyEmitter, EventEmitter)
+
+  const dataEngine = new MyEmitter()
+  dataEngine.on('upload', function (detail, path) {
+    $scope.dataUploading = true
+
+    const fs = require('fs')
+    const request = require('request')
+
+    var formData = {
+      detail: JSON.stringify(detail),
+      file: fs.createReadStream(path)
+    }
+
+    request.post({url: hosts.data + 'api/upload', formData: formData}, function optionalCallback (err, httpResponse, body) {
+      if (err) {
+        return alert('upload failed:', JSON.stringify(err))
+      }
+      dataEngine.emit('upload-end', body)
+    })
+  })
+
+  dataEngine.on('upload-end', function(body) {
+    $scope.dataUploading = false
+    getFiles()
+  })
+
+  // data engine -- end
 
   var checkDevice = function (MAC) {
     // if new, make the dripbox dir and get the user's checksum
@@ -56,7 +101,6 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', function ($scope, 
           const hash = md5File(path)
           const nodePath = require('path')
 
-
           $http({
             method: 'POST',
             url: hosts.metadata + 'api/file',
@@ -65,9 +109,10 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', function ($scope, 
               checkSum: hash
             }
           }).success(function (data) {
-            alert(JSON.stringify(data))
+            dataEngine.emit('upload', data, path)
+          // alert(JSON.stringify(data))
           }).error(function (data) {
-            alert(data.message)
+            // alert(data.message)
           })
 
         }
@@ -97,6 +142,8 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', function ($scope, 
     })
   }
 
+
+
   var setEmptyCheckSum = function () {
     $http({
       method: 'POST',
@@ -121,6 +168,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', function ($scope, 
       getMac.getMac(function (err, macAddress) {
         if (err)  throw err
         checkDevice(macAddress)
+        getFiles()
       })
     }).error(function (data) {
       $scope.message = data.message

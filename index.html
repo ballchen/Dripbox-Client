@@ -22,7 +22,7 @@
         <div ng-bind="message"></div>
       </div> 
     </div>
-  
+    
     <div class="container" ng-if="$root.isLogin">
       <div>
         <h2 ng-bind="'hello, '+$root.user.email"></h2>
@@ -32,9 +32,13 @@
         <button class="btn btn-default" ng-click="pressLogoutButton()">登出</button>
         
       </div>
-
+      <hr>
       <div class="file-list">
-        
+        <h4>Files</h4>
+        <div ng-show="dataUploading">uploading...</div>
+        <ul>
+          <li ng-repeat="file in files">{{file.name}}</li>
+        </ul>
       </div>
     </div>
     
@@ -44,6 +48,7 @@
     <script src="public/components/jquery/dist/jquery.min.js"></script> 
     <script src="public/components/bootstrap/dist/js/bootstrap.min.js"></script>
     <script src="public/components/angular-cookies/angular-cookies.js"></script>
+    <script src="public/components/ng-file-upload/ng-file-upload.js"></script>
     <script src="public/js/login.js"></script>
   </body>
 </html>
