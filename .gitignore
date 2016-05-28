@@ -1,6 +1,6 @@
 node_modules
 config/*
-!config/index
+!config/index.js
 dump.rdb
 *.log
 *.pem

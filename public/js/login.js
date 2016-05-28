@@ -143,7 +143,6 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   }
 
 
-
   var setEmptyCheckSum = function () {
     $http({
       method: 'POST',
@@ -178,7 +177,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   $scope.pressLogoutButton = function () {
     $http({
       method: 'POST',
-      url: 'http://localhost:3001/api/logout'
+      url: hosts.metadata + 'api/logout'
     }).success(function (data) {
       $scope.message = ''
       $rootScope.user = {}
@@ -187,4 +186,22 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       $scope.message = data.message
     })
   }
+}])
+
+
+app.controller('registerCtrl', ['$scope', '$http', '$rootScope', function ($scope, $http, $rootScope) {
+  $scope.registerData = {};
+  $scope.pressRegisterButton = function() {
+    $http({
+      method: 'POST', 
+      url: hosts.metadata + 'api/register',
+      data: $scope.registerData
+    }).success(function(data) {
+      $scope.message = '註冊成功'
+      window.location = 'index.html'
+    }).error(function(data) {
+      $scope.message = data.message || 'error'
+    })
+  }
+
 }])
