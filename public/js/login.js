@@ -16,7 +16,10 @@ var hosts = {
 
 var app = angular.module('dpApp', ['ngFileUpload'])
 app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function ($scope, $http, $rootScope, Upload) {
-  $scope.login = {}
+  $scope.login = {
+    email: 'kerkerball@gmail.com',
+    password: '123456'
+  }
   $scope.message = ''
   $scope.macAddress = null
   $scope.dataUploading = false
@@ -88,6 +91,13 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         const chokidar = require('chokidar')
         const md5File = require('md5-file')
         const watcher = chokidar.watch(config.box.path, {ignored: config.box.ignored})
+        if (!fs.existsSync(`${config.box.path}/.dtree.json`)) {
+          let info = {
+             email: $scope.login.email, 
+             node: [] 
+          }
+          fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(info))
+        }
 
         const eventLog = (event, path) => {
           console.log(event, path)
@@ -110,14 +120,28 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
             }
           }).success(function (data) {
             dataEngine.emit('upload', data, path)
-          // alert(JSON.stringify(data))
           }).error(function (data) {
-            // alert(data.message)
+
           })
 
         }
 
-        const unlinkHandler = function (path) {}
+        const unlinkHandler = function (path) {
+          const nodePath = require('path')
+
+          $http({
+            method: 'POST',
+            url: hosts.metadata + 'api/file/delete',
+            data: {
+              name: nodePath.basename(path)
+            }
+          }).success(function (data) {
+            getFiles()
+          }).error(function (data) {
+            alert(data.message)
+          })
+
+        }
 
         const changeHandler = function (path) {}
 
