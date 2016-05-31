@@ -13,11 +13,12 @@
   "dependencies": {
     "bluebird": "^3.3.5",
     "chokidar": "^1.4.3",
+    "dirsum": "git://github.com/ballchen/node-dirsum.git",
     "events": "^1.1.0",
     "fs": "0.0.2",
     "getmac": "^1.0.7",
     "keymirror": "^0.1.1",
-    "lodash": "^4.11.1",
+    "lodash": "^4.13.1",
     "md5-file": "^2.0.4",
     "mkdirp": "^0.5.1",
     "moment": "^2.13.0",

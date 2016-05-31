@@ -6,7 +6,10 @@ var moment = require('moment')
 var gui = require('nw.gui')
 var mkdirp = require('mkdirp')
 var config = require('./config')
+var _ = require('lodash')
 const exec = require('child_process').exec
+const nodePath = require('path')
+const fs = require('fs')
 
 // var mkBoxDir = require('../lib/basic').mkdir
 var hosts = {
@@ -46,7 +49,6 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   dataEngine.on('upload', function (detail, path) {
     $scope.dataUploading = true
 
-    const fs = require('fs')
     const request = require('request')
 
     var formData = {
@@ -68,10 +70,130 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   })
 
   // data engine -- end
+  
+  var makeLocalTree = function(root, hashes, node) {
+    
+    _.each(hashes.files, function(f, key) {
+      let path = root + '/' + key;
+      let stats = fs.statSync(path);
+
+      if (stats.isDirectory()) {
+        let search = _.findIndex(node, {name: key, type: 'folder', checkSum: f});
+        if(search >= 0) {
+          node.node[search].checkSum = f.hash
+        }
+        else {
+          node.node.push({
+            //expect flat
+            name: key, type: 'folder', checkSum: f.hash, node: []
+          })
+          alert(JSON.stringify(hashes))
+          node.node[node.node.length-1] = (makeLocalTree(path, hashes.files[key], node.node[node.node.length-1]))
+        }
+      }
+      if (stats.isFile()) {
+        let search = _.findIndex(node, {name: key, type: 'file', checkSum: f});
+        if(search >= 0) {
+          
+          node.node[search].checkSum = f
+        }
+        else {
+          alert(JSON.stringify(node))
+          node.node.push({
+            //expect flat
+            name: key, type: 'file', checkSum: f
+          })
+        }
+      }   
+    })
+
+    return node;
+  }
+  
+  var updateLocalDb = function(path, hash) {
+    var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`))
+
+    var nodeIndex = _.findIndex(localdb.node[0].node, {
+      name: nodePath.basename(path),
+      type: 'file',
+      checkSum: hash
+    })
+    if(nodeIndex < 0) {
+      localdb.node[0].node.push({
+        name: nodePath.basename(path),
+        checkSum: hash,
+        type: 'file'
+      })
+    }
+
+    fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(localdb))
+  }
+
+  var updateLocalDb_delete = function(path) {
+    var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`))
+    var index = _.findIndex(localdb.node[0].node, {
+      name: nodePath.basename(path),
+      type: 'file'
+    })
+    if(index >= 0) {
+     localdb.node[0].node.splice(index, 1);
+    }
+
+    fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(localdb))
+  }
+
 
   var checkDevice = function (MAC) {
     // if new, make the dripbox dir and get the user's checksum
     // if old, check checksum
+    // 
+    // 
+    
+    // create dripbox anyway
+    mkdirp.sync(config.box.path);
+    
+    
+    
+    // update the localdb to the newest local
+    
+    // if new comer
+    if (!fs.existsSync(`${config.box.path}/.dtree.json`)) {
+      let info = {
+         email: $scope.login.email, 
+         node: [{
+          name: 'Dripbox',
+          type: 'folder',
+          checkSum: 'd41d8cd98f00b204e9800998ecf8427e',
+          node:[]
+         }] 
+      }
+      fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(info))
+    }
+
+
+    // build the local tree (the folder can be built too!)
+    try{
+      var dirsum = require('dirsum');
+      dirsum.digest(`${config.box.path}/`, 'md5', ['.dtree.json', '.DS_Store'], function(err, hashes) {
+        if (err) throw err;
+        $scope.initfiles = [];
+        var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`))
+
+        if(localdb.node[0].checkSum !== hashes.hash) {
+          localdb.node[0] = (makeLocalTree( config.box.path, hashes , localdb.node[0]))
+        }
+
+        localdb.node[0].checkSum = hashes.hash;
+        fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(localdb));
+      });
+    } catch(e) {
+      console.error(JSON.stringify(e))
+    }
+
+    // pull the user tree from server
+
+
+    // start the watcher
     $http({
       method: 'POST',
       url: hosts.metadata + 'api/me/check_device',
@@ -85,32 +207,31 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         $scope.macAddress = ''
       }
 
-      mkdirp(config.box.path, function (err) {
-        const fs = require('fs')
-        const Promise = require('bluebird')
-        const chokidar = require('chokidar')
-        const md5File = require('md5-file')
-        const watcher = chokidar.watch(config.box.path, {ignored: config.box.ignored})
-        if (!fs.existsSync(`${config.box.path}/.dtree.json`)) {
-          let info = {
-             email: $scope.login.email, 
-             node: [] 
-          }
-          fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(info))
+      const fs = require('fs')
+      const Promise = require('bluebird')
+      const chokidar = require('chokidar')
+      const md5File = require('md5-file')
+      const watcher = chokidar.watch(config.box.path, {ignored: config.box.ignored})
+      
+      const eventLog = (event, path) => {
+        console.log(event, path)
+      }
+
+      const addDirHandler = function (path) {}
+
+      const unlinkDirHandler = function (path) {}
+
+      const addHandler = function (path) {
+        const hash = md5File(path)
+
+        var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`))
+
+        var data = _.find(localdb.node[0].node, {name: nodePath.basename(path)})
+        if(data) {
+          // alert(JSON.stringify(data))
         }
 
-        const eventLog = (event, path) => {
-          console.log(event, path)
-        }
-
-        const addDirHandler = function (path) {}
-
-        const unlinkDirHandler = function (path) {}
-
-        const addHandler = function (path) {
-          const hash = md5File(path)
-          const nodePath = require('path')
-
+        if(!data || data.checkSum !== hash) {
           $http({
             method: 'POST',
             url: hosts.metadata + 'api/file',
@@ -119,50 +240,69 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
               checkSum: hash
             }
           }).success(function (data) {
-            dataEngine.emit('upload', data, path)
-          }).error(function (data) {
+            try{
+              updateLocalDb(path, hash)
 
-          })
-
-        }
-
-        const unlinkHandler = function (path) {
-          const nodePath = require('path')
-
-          $http({
-            method: 'POST',
-            url: hosts.metadata + 'api/file/delete',
-            data: {
-              name: nodePath.basename(path)
+            } catch(e) {
+              alert(e)
             }
-          }).success(function (data) {
-            getFiles()
+            dataEngine.emit('upload', data, path)
+
+            
           }).error(function (data) {
-            alert(data.message)
+            if(data.error == 1202) {
+              try{
+                updateLocalDb(path, hash)
+                
+              } catch(e) {
+                alert(e)
+              }
+            }
           })
+        } 
+      }
 
-        }
+      const unlinkHandler = function (path) {
+        const nodePath = require('path')
 
-        const changeHandler = function (path) {}
-
-        const eventHandler = {
-          'addDir': addDirHandler,
-          'unlinkDir': unlinkDirHandler,
-          'add': addHandler,
-          'unlink': unlinkHandler,
-          'change': changeHandler
-        }
-
-        watcher.on('all', Promise.coroutine(function *(event, path) {
-          eventLog(event, path)
-          try {
-            eventHandler[event](path)
-          } catch(e) {
-            console.log(e)
+        $http({
+          method: 'POST',
+          url: hosts.metadata + 'api/file/delete',
+          data: {
+            name: nodePath.basename(path)
           }
-        }))
+        }).success(function (data) {
+          updateLocalDb_delete(path)
+          getFiles()
+        }).error(function (data) {
+          alert(data.message)
+        })
 
-      })
+      }
+
+      const changeHandler = function (path) {}
+
+      const eventHandler = {
+        'addDir': addDirHandler,
+        'unlinkDir': unlinkDirHandler,
+        'add': addHandler,
+        'unlink': unlinkHandler,
+        'change': changeHandler
+      }
+
+      watcher.on('all', Promise.coroutine(function *(event, path) {
+        eventLog(event, path)
+        try {
+          eventHandler[event](path)
+        } catch(e) {
+          console.log(e)
+        }
+      }))
+
+      watcher.on('ready', Promise.coroutine(function *(){
+        
+      }))
+
     })
   }
 
@@ -185,7 +325,8 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
     }).success(function (data) {
       $scope.message = 'success'
       $rootScope.user = {
-        email: $scope.login.email
+        email: $scope.login.email,
+        checkSum: data.checkSum
       }
       $rootScope.isLogin = true
       getMac.getMac(function (err, macAddress) {
