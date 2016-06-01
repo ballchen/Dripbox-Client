@@ -26,6 +26,47 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   $scope.macAddress = null
   $scope.dataUploading = false
 
+  // polling request
+  var polling = function() {
+    try {
+      $http({
+        method: 'GET',
+        url: hosts.metadata + 'api/polling',
+        timeout: 120000
+      }).success(function (data) {
+        // alert(JSON.stringify(data));
+        analyze(data)
+        polling()
+
+      }).error(function (data) {
+        // alert(JSON.stringify(data));
+        polling()
+
+      }) 
+    } catch(e) {
+      alert(e.stack)
+    }
+    
+  } 
+
+  var analyze = function(data) {
+    if(data.action == 'create') {
+      //download the file
+      let data = {
+        name: data.name,
+        root: `${config.box.path}`,
+        checkSum: data.checkSum
+      }
+
+      queue.create('sync_download', data).save()
+      
+    }
+
+    else if(data.action == 'delete') {
+      queue.create('sync_unlink', data).save()
+    }
+  }
+    
   queue.process('upload', function (job, done) {
 
     try {
@@ -59,9 +100,42 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   })
 
   queue.process('download', function(job, done) {
-    alert(job.data.name)
     dataEngine.emit('download', job.data.name)
     done()
+  })
+
+   queue.process('sync_download', function(job, done) {
+    updateLocalDb(`${job.data.root}/${job.data.name}`, job.data.name)
+    dataEngine.emit('download', job.data.name)
+    done()
+  })
+
+
+  queue.process('sync_unlink', function(job, done) {
+    let data = job.data
+    let path = `${config.box.path}/${data.name}`
+    fs.unlinkSync(path)
+    updateLocalDb_delete(path)
+    done()
+  })
+
+  queue.process('delete', function(job, done) {
+    let path = job.data
+    $http({
+      method: 'POST',
+      url: hosts.metadata + 'api/file/delete',
+      data: {
+        name: nodePath.basename(path)
+      }
+    }).success(function (data) {
+      updateLocalDb_delete(path)
+      getFiles()
+      done()
+    }).error(function (data) {
+      alert(data.message)
+      done(data)
+    })
+
   })
 
   var getFiles = function () {
@@ -224,7 +298,8 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         let obj = {
           name: f.name,
           type: f.type,
-          checkSum: f.version.checkSum
+          checkSum: f.version.checkSum,
+          uploaded: f.version.uploaded
         }
 
         nodes[0].node.push(obj)
@@ -266,11 +341,41 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
     return server_conflict;
   }
 
+  var findUnUpdated = function(server, local) {
+    let server_conflict = [];
+    server.forEach(function(s, sid){
+      let searchIdx = _.findIndex(local, {
+        name: s.name
+      })
+
+      if (searchIdx >= 0) {
+        if(s.checkSum !== local[searchIdx].checkSum){
+          if(s.type == 'file') {
+            
+          } 
+          else if(s.type == 'folder') {
+            // server_conflict = server_conflict.concat(findServer(s.node, local[searchIdx].node));
+          }
+        }
+        else if(s.checkSum == local[searchIdx].checkSum) {
+          if(s.type == 'file' && s.uploaded == false) {
+            server_conflict.push(s)
+          } else if(s.type == 'folder') {
+            server_conflict = server_conflict.concat(findUnUpdated(s.node, local[searchIdx].node));
+          }
+        }
+      }
+    })
+
+    return server_conflict;
+  }
+
 //expect flat first 
   var compareServerNLocal = function(server, local) {
     let conflict = {
         server: [],
-        local: []
+        local: [],
+        unuploaded: [],
       };
     try {
       //sort first
@@ -283,6 +388,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       //server search first: find obj that server has but local not
       conflict.server = findServer(server, local);
       conflict.local = findServer(local, server);
+      conflict.unuploaded = findUnUpdated(server, local);
 
       return conflict;
     } catch(e) {
@@ -376,7 +482,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       var serverdb = makeServerTree(data);
 
       let conflict = compareServerNLocal(serverdb, localdb);
-      alert(JSON.stringify(conflict));
+      // alert(JSON.stringify(conflict));
 
       //if server conflict -> download
       createJob(conflict.server, `${config.box.path}`, 'download')
@@ -388,7 +494,10 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       // find
 
     })
-    
+
+    //poll
+    polling()
+
     // start the watcher
     $http({
       method: 'POST',
@@ -402,6 +511,8 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       } else {
         $scope.macAddress = ''
       }
+
+     
 
       const chokidar = require('chokidar')
       const watcher = chokidar.watch(config.box.path, {ignored: config.box.ignored, ignoreInitial: true})
@@ -425,20 +536,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       }
 
       const unlinkHandler = function (path) {
-
-        $http({
-          method: 'POST',
-          url: hosts.metadata + 'api/file/delete',
-          data: {
-            name: nodePath.basename(path)
-          }
-        }).success(function (data) {
-          updateLocalDb_delete(path)
-          getFiles()
-        }).error(function (data) {
-          alert(data.message)
-        })
-
+        queue.create('delete', path).save()
       }
 
       const changeHandler = function (path) {}
