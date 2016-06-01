@@ -72,6 +72,9 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   // data engine -- end
   
   var makeLocalTree = function(root, hashes, node) {
+    alert(node.checkSum);
+    alert(hashes.hash);
+    // node.checkSum = hashes.hash;
     
     _.each(hashes.files, function(f, key) {
       let path = root + '/' + key;
@@ -142,17 +145,59 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
     fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(localdb))
   }
 
+  var calFolderCheckSum = function(node) {
+
+    var crypto = require('crypto');
+    var hash = crypto.createHash('md5');
+
+    node = _.sortBy(node, 'names');
+
+    node.forEach(function(n, idx) {
+
+      if(n.type == 'folder') {
+        hash.update(n.checkSum)
+      } else if(n.type == 'file') {
+        hash.update(n.checkSum)
+      }
+
+    })
+
+    return hash.digest('hex');
+  }
+
+  // expect flat
+  var makeServerTree = function(files) {
+
+    let nodes = [{
+      name: 'Dripbox',
+      type: 'folder',
+      checkSum: 'd41d8cd98f00b204e9800998ecf8427e',
+      node:[]
+    }];
+
+    try {
+      files.forEach(function(f, idx) {
+        let obj = {
+          name: f.name,
+          type: f.type,
+          checkSum: f.version.checkSum
+        }
+
+        nodes[0].node.push(obj)
+      })
+
+      nodes[0].checkSum = calFolderCheckSum(nodes[0].node)
+    } catch(e) {
+      alert(e)
+    } finally {
+      return nodes;
+    }
+
+  }
 
   var checkDevice = function (MAC) {
-    // if new, make the dripbox dir and get the user's checksum
-    // if old, check checksum
-    // 
-    // 
-    
     // create dripbox anyway
     mkdirp.sync(config.box.path);
-    
-    
     
     // update the localdb to the newest local
     
@@ -176,9 +221,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       var dirsum = require('dirsum');
       dirsum.digest(`${config.box.path}/`, 'md5', ['.dtree.json', '.DS_Store'], function(err, hashes) {
         if (err) throw err;
-        $scope.initfiles = [];
         var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`))
-
         if(localdb.node[0].checkSum !== hashes.hash) {
           localdb.node[0] = (makeLocalTree( config.box.path, hashes , localdb.node[0]))
         }
@@ -187,10 +230,37 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(localdb));
       });
     } catch(e) {
-      console.error(JSON.stringify(e))
+      alert(JSON.stringify(e))
     }
 
     // pull the user tree from server
+    
+    new Promise(function(resolve, reject) {
+      $http({
+        method: 'GET',
+        url: hosts.metadata + 'api/file'
+      }).success(function (data) {
+        resolve(data)
+      }).error(function (data) {
+        reject()
+      })
+    }).then(function(data){
+      $scope.files = data;
+
+
+      // alert(JSON.stringify(data));
+      var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`))
+      var serverdb = makeServerTree(data);
+
+      alert(JSON.stringify(serverdb));
+
+
+
+
+    })
+    
+    
+    
 
 
     // start the watcher
