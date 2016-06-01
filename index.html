@@ -38,7 +38,7 @@
         <h4>Files</h4>
         <div ng-show="dataUploading">uploading...</div>
         <ul>
-          <li ng-repeat="file in files">{{file.name}}</li>
+          <li ng-repeat="file in files">{{file.name}} <span ng-bind="file.version.uploaded?'':'uploading...'"></span></li>
         </ul>
       </div>
     </div>

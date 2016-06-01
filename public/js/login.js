@@ -6,16 +6,15 @@ var moment = require('moment')
 var gui = require('nw.gui')
 var mkdirp = require('mkdirp')
 var config = require('./config')
+var queue = require('./lib/queue').queue
 var _ = require('lodash')
 const exec = require('child_process').exec
 const nodePath = require('path')
 const fs = require('fs')
+const md5File = require('md5-file')
 
 // var mkBoxDir = require('../lib/basic').mkdir
-var hosts = {
-  metadata: 'http://localhost:3001/',
-  data: 'http://localhost:3002/'
-}
+var hosts = config.hosts
 
 var app = angular.module('dpApp', ['ngFileUpload'])
 app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function ($scope, $http, $rootScope, Upload) {
@@ -26,6 +25,26 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   $scope.message = ''
   $scope.macAddress = null
   $scope.dataUploading = false
+
+  queue.process('upload', function (job, done) {
+    let data = job.data
+    const path = `${data.root}/${data.name}`
+    let hash = md5File(path)
+    $http({
+      method: 'POST',
+      url: hosts.metadata + 'api/file',
+      data: {
+        name: nodePath.basename(path),
+        checkSum: hash
+      }
+    }).success(function(data) {
+      let node = data.node.ops[0];
+      node.version = data.version.ops[0];
+      $scope.files.push(data.node.ops[0]);
+      updateLocalDb()
+      dataEngine.emit('upload', data, path)
+    })
+  })
 
   var getFiles = function () {
     $http({
@@ -72,16 +91,12 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   // data engine -- end
   
   var makeLocalTree = function(root, hashes, node) {
-    alert(node.checkSum);
-    alert(hashes.hash);
-    // node.checkSum = hashes.hash;
-    
     _.each(hashes.files, function(f, key) {
       let path = root + '/' + key;
       let stats = fs.statSync(path);
 
       if (stats.isDirectory()) {
-        let search = _.findIndex(node, {name: key, type: 'folder', checkSum: f});
+        let search = _.findIndex(node.node, {name: key, type: 'folder', checkSum: f});
         if(search >= 0) {
           node.node[search].checkSum = f.hash
         }
@@ -90,18 +105,17 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
             //expect flat
             name: key, type: 'folder', checkSum: f.hash, node: []
           })
-          alert(JSON.stringify(hashes))
+          // alert(JSON.stringify(hashes))
           node.node[node.node.length-1] = (makeLocalTree(path, hashes.files[key], node.node[node.node.length-1]))
         }
       }
       if (stats.isFile()) {
-        let search = _.findIndex(node, {name: key, type: 'file', checkSum: f});
+        let search = _.findIndex(node.node, {name: key, type: 'file', checkSum: f});
         if(search >= 0) {
           
           node.node[search].checkSum = f
         }
         else {
-          alert(JSON.stringify(node))
           node.node.push({
             //expect flat
             name: key, type: 'file', checkSum: f
@@ -195,10 +209,35 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
 
   }
 
+  var findServer = function(server, local) {
+    let server_conflict = [];
+    server.forEach(function(s, sid){
+      let searchIdx = _.findIndex(local, {
+        name: s.name
+      })
+
+      if (searchIdx >= 0) {
+        if(s.checkSum !== local[searchIdx].checkSum){
+          if(s.type == 'file') {
+            conflict.server.push(s)
+          } 
+          else if(s.type == 'folder') {
+            server_conflict = server_conflict.concat(findServer(s.node, local[searchIdx].node));
+          }
+        }
+      }
+      else {
+         if(s.type == 'file') {
+          server_conflict.push(s)
+        }
+      }
+    })
+
+    return server_conflict;
+  }
+
 //expect flat first 
   var compareServerNLocal = function(server, local) {
-    alert('server' + JSON.stringify(server))
-    alert('local' + JSON.stringify(local))
     try {
       //sort first
       if(server.length && local.length) {
@@ -211,31 +250,33 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         local: []
       };
       //server search first: find obj that server has but local not
-      server.forEach(function(s, sid){
-        let searchIdx = _.findIndex(local, {
-          name: server.name
-        })
-
-        if (searchIdx >= 0) {
-          if(s.checkSum !== local[searchIdx].checkSum){
-            if(s.type == 'file') {
-              conflict.server.push(s)
-            }
-          }
-        }
-        else {
-           if(s.type == 'file') {
-          conflict.server.push(s)
-        }
-        }
-
-      })
+      conflict.server = findServer(server, local);
+      conflict.local = findServer(local, server);
 
       return conflict;
     } catch(e) {
       alert(e)
     }
     
+  }
+
+  var createJob = function(tree, root, method) {
+    tree.forEach(function(f, fid) {
+      if(f.type == 'file') {
+        let data = {
+          name: f.name,
+          root: root,
+          checkSum: f.checkSum
+        }
+        queue.create(method, data).save()
+      }
+
+      if(f.type == 'folder') {
+        mkdirp.sync(`${root}/${f.name}`)
+        createJob(tree.node, `${root}/${f.name}`, method)
+      }
+
+    })
   }
 
   var checkDevice = function (MAC) {
@@ -264,7 +305,15 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       var dirsum = require('dirsum');
       dirsum.digest(`${config.box.path}/`, 'md5', ['.dtree.json', '.DS_Store'], function(err, hashes) {
         if (err) throw err;
-        var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`))
+        var localdb = {
+          email: $scope.login.email, 
+          node: [{
+            name: 'Dripbox',
+            type: 'folder',
+            checkSum: 'd41d8cd98f00b204e9800998ecf8427e',
+            node:[]
+          }] 
+        }
         if(localdb.node[0].checkSum !== hashes.hash) {
           localdb.node[0] = (makeLocalTree( config.box.path, hashes , localdb.node[0]))
         }
@@ -295,14 +344,34 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`)).node
       var serverdb = makeServerTree(data);
 
-      alert(JSON.stringify(serverdb));
-
       let conflict = compareServerNLocal(serverdb, localdb);
       alert(JSON.stringify(conflict));
 
+      //if server conflict -> download
+     
+      conflict.server.forEach(function(f, fid) {
+        let data = {
+          name: f.name,
+          root: `${config.box.path}/`,
+          checkSum: f.checkSum
+        }
+        queue.create('download', data).save()
+      })
+      
+      //if local conflict -> upload
+      
+      createJob(conflict.local, `${config.box.path}`, 'upload')
+      // conflict.local.forEach(function(f, fid) {
+      //   let data = {
+      //     name: f.name,
+      //     root: `${config.box.path}/`,
+      //     checkSum: f.checkSum
+      //   }
+      //   queue.create('upload', data).save()
+      // })
     })
     
-    
+    /**
     // start the watcher
     $http({
       method: 'POST',
@@ -414,6 +483,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       }))
 
     })
+    **/
   }
 
 

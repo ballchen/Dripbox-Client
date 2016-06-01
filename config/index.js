@@ -14,9 +14,9 @@ const config = {
 
 // Load config file
 try {
-  _.merge(config, require('./' + env))
+  _.merge(config, require('./development'))
 } catch (err) {
-  console.log('Failed to load config:', env)
+  alert(err.stack)
 }
 
 module.exports = config
