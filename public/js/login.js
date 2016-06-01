@@ -195,6 +195,49 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
 
   }
 
+//expect flat first 
+  var compareServerNLocal = function(server, local) {
+    alert('server' + JSON.stringify(server))
+    alert('local' + JSON.stringify(local))
+    try {
+      //sort first
+      if(server.length && local.length) {
+        server = _.sortBy(server, 'name')
+        local = _.sortBy(local, 'name')
+      }
+
+      let conflict = {
+        server: [],
+        local: []
+      };
+      //server search first: find obj that server has but local not
+      server.forEach(function(s, sid){
+        let searchIdx = _.findIndex(local, {
+          name: server.name
+        })
+
+        if (searchIdx >= 0) {
+          if(s.checkSum !== local[searchIdx].checkSum){
+            if(s.type == 'file') {
+              conflict.server.push(s)
+            }
+          }
+        }
+        else {
+           if(s.type == 'file') {
+          conflict.server.push(s)
+        }
+        }
+
+      })
+
+      return conflict;
+    } catch(e) {
+      alert(e)
+    }
+    
+  }
+
   var checkDevice = function (MAC) {
     // create dripbox anyway
     mkdirp.sync(config.box.path);
@@ -249,20 +292,17 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
 
 
       // alert(JSON.stringify(data));
-      var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`))
+      var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`)).node
       var serverdb = makeServerTree(data);
 
       alert(JSON.stringify(serverdb));
 
-
-
+      let conflict = compareServerNLocal(serverdb, localdb);
+      alert(JSON.stringify(conflict));
 
     })
     
     
-    
-
-
     // start the watcher
     $http({
       method: 'POST',
@@ -281,7 +321,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       const Promise = require('bluebird')
       const chokidar = require('chokidar')
       const md5File = require('md5-file')
-      const watcher = chokidar.watch(config.box.path, {ignored: config.box.ignored})
+      const watcher = chokidar.watch(config.box.path, {ignored: config.box.ignored, ignoreInitial: true})
       
       const eventLog = (event, path) => {
         console.log(event, path)
