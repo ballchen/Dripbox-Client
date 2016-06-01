@@ -27,23 +27,41 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   $scope.dataUploading = false
 
   queue.process('upload', function (job, done) {
-    let data = job.data
-    const path = `${data.root}/${data.name}`
-    let hash = md5File(path)
-    $http({
-      method: 'POST',
-      url: hosts.metadata + 'api/file',
-      data: {
-        name: nodePath.basename(path),
-        checkSum: hash
-      }
-    }).success(function(data) {
-      let node = data.node.ops[0];
-      node.version = data.version.ops[0];
-      $scope.files.push(data.node.ops[0]);
-      updateLocalDb()
-      dataEngine.emit('upload', data, path)
-    })
+
+    try {
+      let data = job.data
+      const path = `${data.root}/${data.name}`
+      let hash = md5File(path)
+      $http({
+        method: 'POST',
+        url: hosts.metadata + 'api/file',
+        data: {
+          name: nodePath.basename(path),
+          checkSum: hash
+        }
+      }).success(function(data) {
+        let node = data.node.ops[0];
+        node.version = data.version.ops[0];
+        $scope.files.push(data.node.ops[0]);
+        updateLocalDb(path, hash)
+        dataEngine.emit('upload', data, path)
+        done()
+      }).error(function(data) {
+        done(data)
+      })
+    } catch(e) {
+      done(e)
+    } finally {
+      done()
+    }
+    
+
+  })
+
+  queue.process('download', function(job, done) {
+    alert(job.data.name)
+    dataEngine.emit('download', job.data.name)
+    done()
   })
 
   var getFiles = function () {
@@ -86,6 +104,18 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   dataEngine.on('upload-end', function(body) {
     $scope.dataUploading = false
     getFiles()
+  })
+
+  dataEngine.on('download', function(file) {
+
+    const request = require('request')
+    let path = `${config.box.path}/${file}`;
+    var streamFile = fs.createWriteStream(path);
+    streamFile.on('finish', function(){
+      getFiles()
+    })
+
+    request.post({url: hosts.data + 'api/download', form: {file: file}}).pipe(streamFile)
   })
 
   // data engine -- end
@@ -202,7 +232,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
 
       nodes[0].checkSum = calFolderCheckSum(nodes[0].node)
     } catch(e) {
-      alert(e)
+      alert(e.stack)
     } finally {
       return nodes;
     }
@@ -219,7 +249,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       if (searchIdx >= 0) {
         if(s.checkSum !== local[searchIdx].checkSum){
           if(s.type == 'file') {
-            conflict.server.push(s)
+            server_conflict.push(s)
           } 
           else if(s.type == 'folder') {
             server_conflict = server_conflict.concat(findServer(s.node, local[searchIdx].node));
@@ -238,6 +268,10 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
 
 //expect flat first 
   var compareServerNLocal = function(server, local) {
+    let conflict = {
+        server: [],
+        local: []
+      };
     try {
       //sort first
       if(server.length && local.length) {
@@ -245,17 +279,14 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         local = _.sortBy(local, 'name')
       }
 
-      let conflict = {
-        server: [],
-        local: []
-      };
+      
       //server search first: find obj that server has but local not
       conflict.server = findServer(server, local);
       conflict.local = findServer(local, server);
 
       return conflict;
     } catch(e) {
-      alert(e)
+      alert(e.stack)
     }
     
   }
@@ -348,30 +379,16 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       alert(JSON.stringify(conflict));
 
       //if server conflict -> download
-     
-      conflict.server.forEach(function(f, fid) {
-        let data = {
-          name: f.name,
-          root: `${config.box.path}/`,
-          checkSum: f.checkSum
-        }
-        queue.create('download', data).save()
-      })
-      
-      //if local conflict -> upload
-      
+      createJob(conflict.server, `${config.box.path}`, 'download')
+
+      //if local conflict -> upload      
       createJob(conflict.local, `${config.box.path}`, 'upload')
-      // conflict.local.forEach(function(f, fid) {
-      //   let data = {
-      //     name: f.name,
-      //     root: `${config.box.path}/`,
-      //     checkSum: f.checkSum
-      //   }
-      //   queue.create('upload', data).save()
-      // })
+
+      // then find the unuploaded file
+      // find
+
     })
     
-    /**
     // start the watcher
     $http({
       method: 'POST',
@@ -386,10 +403,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         $scope.macAddress = ''
       }
 
-      const fs = require('fs')
-      const Promise = require('bluebird')
       const chokidar = require('chokidar')
-      const md5File = require('md5-file')
       const watcher = chokidar.watch(config.box.path, {ignored: config.box.ignored, ignoreInitial: true})
       
       const eventLog = (event, path) => {
@@ -401,48 +415,16 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       const unlinkDirHandler = function (path) {}
 
       const addHandler = function (path) {
-        const hash = md5File(path)
-
-        var localdb = JSON.parse(fs.readFileSync(`${config.box.path}/.dtree.json`))
-
-        var data = _.find(localdb.node[0].node, {name: nodePath.basename(path)})
-        if(data) {
-          // alert(JSON.stringify(data))
+        let hash = md5File(path)
+         let data = {
+          name: nodePath.basename(path),
+          root: `${config.box.path}`,
+          checkSum: hash
         }
-
-        if(!data || data.checkSum !== hash) {
-          $http({
-            method: 'POST',
-            url: hosts.metadata + 'api/file',
-            data: {
-              name: nodePath.basename(path),
-              checkSum: hash
-            }
-          }).success(function (data) {
-            try{
-              updateLocalDb(path, hash)
-
-            } catch(e) {
-              alert(e)
-            }
-            dataEngine.emit('upload', data, path)
-
-            
-          }).error(function (data) {
-            if(data.error == 1202) {
-              try{
-                updateLocalDb(path, hash)
-                
-              } catch(e) {
-                alert(e)
-              }
-            }
-          })
-        } 
+        queue.create('upload', data).save()
       }
 
       const unlinkHandler = function (path) {
-        const nodePath = require('path')
 
         $http({
           method: 'POST',
@@ -483,7 +465,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       }))
 
     })
-    **/
+    
   }
 
 
