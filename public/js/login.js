@@ -34,7 +34,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         url: hosts.metadata + 'api/polling',
         timeout: 120000
       }).success(function (data) {
-        alert(JSON.stringify(data));
+        // alert(JSON.stringify(data));
         analyze(data)
         polling()
 
@@ -126,6 +126,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       let path = `${config.box.path}/${data.file.name}`
       fs.unlinkSync(path)
       updateLocalDb_delete(path)
+      getFiles()
     } catch(e) {
       done(e)
     } 
