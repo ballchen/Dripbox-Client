@@ -39,7 +39,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         polling()
 
       }).error(function (data) {
-        alert(JSON.stringify(data));
+        // alert(JSON.stringify(data));
         polling()
 
       }) 
@@ -64,9 +64,31 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       queue.create('sync_unlink', data).save()
     }
   }
+
+  queue.process('upload_update', function (job, done) {
+    try{
+      let data = job.data
+      const path = `${data.root}/${data.name}`
+      let hash = data.checkSum
+
+      $http({
+        method: 'POST', 
+        url: hosts.metadata + 'api/file/update',
+        data: {
+          name: nodePath.basename(path),
+          checkSum: hash
+        }
+      }).success(function(resData) {
+        alert(JSON.stringify(resData))
+      })
+    } catch(e) {
+      done(e)
+    } finally {
+      done()
+    }
+  })
     
   queue.process('upload', function (job, done) {
-
     try {
       let data = job.data
       const path = `${data.root}/${data.name}`
@@ -102,9 +124,8 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
     done()
   })
 
-   queue.process('sync_download', function(job, done) {
+  queue.process('sync_download', function(job, done) {
     try {
-      alert('sync_download')
       updateLocalDb(`${job.data.root}/${job.data.name}`, job.data.name)
       dataEngine.emit('download', job.data.name)
     } catch(e) {
@@ -541,7 +562,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
 
       const addHandler = function (path) {
         let hash = md5File(path)
-         let data = {
+        let data = {
           name: nodePath.basename(path),
           root: `${config.box.path}`,
           checkSum: hash
@@ -553,7 +574,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         queue.create('delete', path).save()
       }
 
-      const changeHandler = function (path) {}
+      const changeHandler = function (path, state) {}
 
       const eventHandler = {
         'addDir': addDirHandler,
@@ -563,14 +584,16 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
         'change': changeHandler
       }
 
-      watcher.on('all', Promise.coroutine(function *(event, path) {
+      watcher.on('all', Promise.coroutine(function *(event, path, state) {
+        alert(JSON.stringify(event))
         eventLog(event, path)
         try {
-          eventHandler[event](path)
+          eventHandler[event](path, state)
         } catch(e) {
           console.log(e)
         }
       }))
+
 
       watcher.on('ready', Promise.coroutine(function *(){
         
