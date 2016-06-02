@@ -52,15 +52,12 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   var analyze = function(data) {
     if(data.action == 'create') {
       //download the file
-      alert('create')
-      let data = {
-        name: data.name,
+      let d = {
+        name: data.file.name,
         root: `${config.box.path}`,
-        checkSum: data.checkSum
+        checkSum: data.file.checkSum
       }
-
-      queue.create('sync_download', data).save()
-      
+      queue.create('sync_download', d).save()
     }
 
     else if(data.action == 'delete') {
