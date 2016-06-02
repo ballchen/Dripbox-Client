@@ -585,7 +585,6 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       }
 
       watcher.on('all', Promise.coroutine(function *(event, path, state) {
-        alert(JSON.stringify(event))
         eventLog(event, path)
         try {
           eventHandler[event](path, state)
