@@ -12,6 +12,7 @@ const exec = require('child_process').exec
 const nodePath = require('path')
 const fs = require('fs')
 const md5File = require('md5-file')
+const network = require('./lib/network').network
 
 // var mkBoxDir = require('../lib/basic').mkdir
 var hosts = config.hosts
@@ -26,6 +27,23 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   $scope.macAddress = null
   $scope.dataUploading = false
 
+
+  // network detect
+
+  network.on('online', function () {
+    $scope.network_status = 'online'
+    if($rootScope.isLogin) {
+      reconstruct()
+    }
+    $scope.$apply()
+  }).on('offline', function () {
+    $scope.network_status = 'offline'
+    $scope.$apply()
+  })
+
+  // network detect --- end
+  
+  
   // polling request
   var polling = function() {
     try {
@@ -64,6 +82,8 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       queue.create('sync_unlink', data).save()
     }
   }
+
+  // process the queue
 
   queue.process('upload_update', function (job, done) {
     try{
@@ -172,6 +192,8 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
     })
 
   })
+
+  //process the queu --- end  
 
   var getFiles = function () {
     $http({
@@ -451,27 +473,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
     })
   }
 
-  var checkDevice = function (MAC) {
-    // create dripbox anyway
-    mkdirp.sync(config.box.path);
-    
-    // update the localdb to the newest local
-    
-    // if new comer
-    if (!fs.existsSync(`${config.box.path}/.dtree.json`)) {
-      let info = {
-         email: $scope.login.email, 
-         node: [{
-          name: 'Dripbox',
-          type: 'folder',
-          checkSum: 'd41d8cd98f00b204e9800998ecf8427e',
-          node:[]
-         }] 
-      }
-      fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(info))
-    }
-
-
+  var reconstruct = function () {
     // build the local tree (the folder can be built too!)
     try{
       var dirsum = require('dirsum');
@@ -529,6 +531,35 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
       // find
 
     })
+  }
+
+  var reconstructLoop = function() {
+    setInterval(function() {
+      reconstruct()
+    }, 10000)
+  }
+
+  var checkDevice = function (MAC) {
+    // create dripbox anyway
+    mkdirp.sync(config.box.path);
+    
+    // update the localdb to the newest local
+    
+    // if new comer
+    if (!fs.existsSync(`${config.box.path}/.dtree.json`)) {
+      let info = {
+         email: $scope.login.email, 
+         node: [{
+          name: 'Dripbox',
+          type: 'folder',
+          checkSum: 'd41d8cd98f00b204e9800998ecf8427e',
+          node:[]
+         }] 
+      }
+      fs.writeFileSync(`${config.box.path}/.dtree.json`, JSON.stringify(info))
+    }
+
+    reconstruct()
 
     //poll
     polling()

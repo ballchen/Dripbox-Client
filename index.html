@@ -29,8 +29,12 @@
         <h2 ng-bind="'hello, '+$root.user.email"></h2>
       </div>
       <div>
+        network status: {{network_status}}
+      </div>
+      <div>
         {{macAddress}}
         <button class="btn btn-default" ng-click="pressLogoutButton()">登出</button>
+
         
       </div>
       <hr>
