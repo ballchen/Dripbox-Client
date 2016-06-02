@@ -44,7 +44,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
 
       }) 
     } catch(e) {
-      alert(e.stack)
+      alert("poll:" + e.stack)
     }
     
   } 
@@ -52,6 +52,7 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   var analyze = function(data) {
     if(data.action == 'create') {
       //download the file
+      alert('create')
       let data = {
         name: data.name,
         root: `${config.box.path}`,
@@ -105,27 +106,33 @@ app.controller('loginCtrl', ['$scope', '$http', '$rootScope', 'Upload', function
   })
 
    queue.process('sync_download', function(job, done) {
-    updateLocalDb(`${job.data.root}/${job.data.name}`, job.data.name)
-    dataEngine.emit('download', job.data.name)
-    done()
+    try {
+      alert('sync_download')
+      updateLocalDb(`${job.data.root}/${job.data.name}`, job.data.name)
+      dataEngine.emit('download', job.data.name)
+    } catch(e) {
+      done(e)
+    } 
+    finally {
+      done()
+    }
+    
   })
 
 
   queue.process('sync_unlink', function(job, done) {
-    try{
-      let data = job.data
+    try {
+       let data = job.data;
       let path = `${config.box.path}/${data.file.name}`
       fs.unlinkSync(path)
       updateLocalDb_delete(path)
-      getFiles()
-      
-    }
-    catch(e) {
+    } catch(e) {
       done(e)
-    } finally {
+    } 
+    finally {
       done()
     }
-    
+   
   })
 
   queue.process('delete', function(job, done) {
